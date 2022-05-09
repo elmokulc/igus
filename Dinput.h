@@ -11,7 +11,7 @@
 class Dinput
 {
   public:
-    Dinput(int pin, byte mode);  // (mode is WiringPinMode for STM32)
+    Dinput(int pin, byte mode);
     boolean getLevel();
   private:
     int inPin;
