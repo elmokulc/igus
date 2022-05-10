@@ -3,18 +3,29 @@
 #include <uStepperS.h>
 #include "Dinput.h"
 
-#define STEP_REVOLUTION  400  // Steps per revolution
-#define MICRO_STEPS  256      // Driver internal position counter is 256 microsteps per step
+#define STEP_REVOLUTION 400 // Steps per revolution
+#define MICRO_STEP      256 // Driver internal position counter is 256 microsteps per step
+
+#define FAST_ACCELERATION 500 // 500 fullsteps/s^2
+#define SLOW_ACCELERATION  75 //  75 fullsteps/s^2
+
+#define FAST_VELOCITY 750 // 750 fullsteps/s
+#define SLOW_VELOCITY 100 // 100 fullsteps/2
+
+#define RIGHT_DIR  0 // Right direction
+#define LEFT_DIR   1 // Left direction
+
 
 
 uStepperS stepperMotor;
 Dinput limitSwitch(2, INPUT);    // Limit switch digital input to pin D2
 
-int32_t angle = 360.0;        //amount of degrees to move
-// int32_t nStep = int32_t((angle * float(STEP_REVOLUTION) * float(MICRO_STEPS))/ 360.0);
-int32_t nStep = -3 * int32_t(STEP_REVOLUTION) * int32_t(MICRO_STEPS);
+int16_t pStep;
+int32_t nStep;
 
-
+/*
+SETUP
+*/
 void setup() {
   Serial.begin(9600);
   
@@ -22,60 +33,90 @@ void setup() {
   stepperMotor.setup(NORMAL,STEP_REVOLUTION);        //Initialisation of the uStepper S
 
   // Move carriage to initial podition
-  goToInitialPosition();
+  MoveToInitialPosition();
+  
+  // Set Acceleration and velocity
+  stepperMotor.setMaxAcceleration(FAST_ACCELERATION); // Fast acceleration
+  stepperMotor.setMaxVelocity(FAST_VELOCITY);         // Fast velocity
 }
 
-void loop() {
-  // put your main code here, to run repeatedly:
-  // if(!stepperMotor.getMotorState())          //If motor is at standstill
-  // {
-    // delay(1000);
 
-    // Serial.print("Angle: "); Serial.println(angle); 
-    // Serial.print("Steps: "); Serial.println(nStep); 
-    
-    // stepperMotor.moveAngle(angle);
-    // angle = -angle;
-    
-    // stepperMotor.moveSteps(nStep);           //start new movement
-    // nStep = -nStep;                     //invert angle variable, so the next move is in opposite direction
-  // }
-   // Serial.print("Angle: ");
-   // Serial.print(stepperMotor.encoder.getAngleMoved());       //print out angle moved since last reset
-   // Serial.println(" Degrees");
+/*
+MAIN LOOP
+*/
+void loop() {
+  if(Serial.available())
+  {
+    pStep = Serial.parseInt();      //Read nb steps from serial
+
+    nStep = int32_t(-1) * int32_t(pStep) * int32_t(MICRO_STEP);
+    Serial.println(nStep);
+
+    // stepperMotor.moveSteps(DistanceToSteps(3.0, RIGHT_DIR));
+    stepperMotor.moveSteps(nStep);
+  }
 }
 
 
 /*
 Move carriage to initial position
 */
-void goToInitialPosition()
+void MoveToInitialPosition()
 {
-  stepperMotor.setMaxAcceleration(500);     //use an acceleration of 2000 fullsteps/s^2
-  stepperMotor.setMaxVelocity(500);         //Max velocity of 500 fullsteps/s
+  stepperMotor.setMaxAcceleration(FAST_ACCELERATION); // Fast acceleration
+  stepperMotor.setMaxVelocity(FAST_VELOCITY);         // Fast velocity
+
+  // Serial.println(stepperMotor.encoder.getAngleRaw());  //print out angle moved since last reset
 
   // Move carriage left to limit switch
   if (limitSwitch.getLevel()){              // Limit switch not pressed (HIGH)
     stepperMotor.runContinous(CW);          // Move carriage left
-    while (limitSwitch.getLevel()) {}       // Wait for limit switch pressed
+    while (limitSwitch.getLevel());         // Wait for limit switch pressed
     stepperMotor.stop(HARD);                // Stop carriage
     }
+   
+  // Move carriage 3 mm right
+  stepperMotor.moveSteps(DistanceToSteps(3.0, RIGHT_DIR));
 
-  // Move carriage nSteps right
-  stepperMotor.moveSteps(nStep);
+  
+  while (stepperMotor.getMotorState(STANDSTILL));
 
-  delay(3000);
-
-  stepperMotor.setMaxAcceleration(100);
-  stepperMotor.setMaxVelocity(100);
+  stepperMotor.setMaxAcceleration(SLOW_ACCELERATION); // Slow acceleration
+  stepperMotor.setMaxVelocity(SLOW_VELOCITY);         // Slow velocity
 
   // Move carriage left to limit switch
   if (limitSwitch.getLevel()){              // Limit switch not pressed (HIGH)
     stepperMotor.runContinous(CW);          // Move carriage left
-    while (limitSwitch.getLevel()) {}       // Wait for limit switch pressed
+    while (limitSwitch.getLevel());         // Wait for limit switch pressed
     stepperMotor.stop(HARD);                // Stop carriage
   }
   
-  // Move carriage 10000 steps right
-  stepperMotor.moveSteps(nStep);
+  // Move carriage 3 mm right
+  stepperMotor.moveSteps(DistanceToSteps(3.0, RIGHT_DIR));
+
+  while (stepperMotor.getMotorState(STANDSTILL));
+  
+  // Serial.print(stepperMotor.encoder.getAngleRaw());  //print out angle moved since last reset
+}
+
+
+/*
+Change distance (mm) to microsteps
+*/
+int32_t DistanceToSteps(float dist, uint8_t dir)
+{
+  int32_t nStps;
+  
+  switch (dir) {
+
+    case RIGHT_DIR :  
+      nStps = int32_t (dist * float(STEP_REVOLUTION) * float(MICRO_STEP) / -1.5);
+      break;
+
+    case LEFT_DIR :  
+      nStps = int32_t (dist * float(STEP_REVOLUTION) * float(MICRO_STEP) / 1.5);
+      break;
+    }
+  
+  return(nStps);
 }
