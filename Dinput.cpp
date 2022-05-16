@@ -1,12 +1,12 @@
 /*
-  Input.cpp - Digital input
+  Dinput.cpp - Digital input
 */
 
 #include "Dinput.h"
 
 
-// Instantiate a new DIGITAL INPUT class
-Dinput::Dinput(int pin, byte mode) // pin = pin number, mode = INPUT, INPUT_PULLUP (and also INPUT_PULLDOWN for STM32)
+// Instantiate a new DIGITAL INPUT object
+Dinput::Dinput(int pin, byte mode) // pin = pin number, mode = INPUT, INPUT_PULLUP
 {
   inPin = pin; 
   pinMode(inPin, mode);
@@ -18,4 +18,3 @@ boolean Dinput::getLevel()
 {
   return(digitalRead(inPin));  // returns HIGH or LOW
 }
-

@@ -1,7 +1,7 @@
 /***/
 
-#include <uStepperS.h>
 #include "Dinput.h"
+#include "Umotor.h"
 
 #define STEP_REVOLUTION 400 // Steps per revolution
 #define MICRO_STEP      256 // Driver internal position counter is 256 microsteps per step
@@ -22,17 +22,17 @@
 #define DIR_RIGHT  0 // Right direction
 #define DIR_LEFT   1 // Left direction
 
-#define CMD_GOTORIGHT 0x31  // 1
-#define CMD_GOTOLEFT  0x32  // 2
-#define CMD_RESET     0x33  // 3
-#define CMD_STOP      0x34  // 4
-#define CMD_POSE      0x35  // 5
+#define CMD_GOTORIGHT "R"
+#define CMD_GOTOLEFT  "L"
+#define CMD_GOHOME    "H"
+#define CMD_STOP      "S"
+#define CMD_INFO      "I"
 
-uStepperS stepperMotor;
-Dinput limitSwitch(2, INPUT);    // Limit switch to digital input D2
+#define LIMIT_SWITCH_PIN  2
 
-int32_t encoderStep, motorStep, deltaStep, nStep;
-uint8_t motorStatus, incomingByte;
+
+Umotor stepperMotor(LIMIT_SWITCH_PIN);
+int32_t nStep;
 
 
 
@@ -46,10 +46,7 @@ void setup() {
   stepperMotor.setup(NORMAL,STEP_REVOLUTION);         // Normal mode
 
   // Move carriage to initial podition
-  motorStatus = MoveToInitialPosition();
-
-  // reset motor step counter
-  motorStep = 0;
+  MoveToInitialPosition(&stepperMotor);
 }
 
 
@@ -60,41 +57,41 @@ MAIN LOOP
 void loop() {
   if(Serial.available())
   {
-    incomingByte = Serial.read();
+    String incomingByte = Serial.readStringUntil('#');
     // Serial.print("cmd = "); Serial.println(incomingByte);
 
-    switch (incomingByte) {
-      case CMD_GOTORIGHT :
-        nStep = int32_t(Serial.parseInt());
-        if ((motorStep + nStep) <= LIMIT_STEP_MAX) motorStatus = rotateSteps(nStep, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
-        break;
-      case CMD_GOTOLEFT :  
-        nStep = int32_t(Serial.parseInt());
-        if ((motorStep - nStep) >= LIMIT_STEP_MIN) motorStatus = rotateSteps(nStep, DIR_LEFT, ACCELERATION_FAST, VELOCITY_FAST);
-        break;
-      case CMD_RESET :  
-        motorStatus = MoveToInitialPosition();
-        motorStep = 0;
-        break; 
-      case CMD_STOP :  
-        stepperMotor.stop(HARD);
-        motorStatus = MOTOR_STOPPED;
-        break; 
-      case CMD_POSE :  
-        encoderStep = int32_t(0.5 + float(stepperMotor.encoder.getAngleMovedRaw()) * float(STEP_REVOLUTION) / 65535.0);
-        Serial.print("encoderStep = "); Serial.println(encoderStep);
-        Serial.print("motorStep = "); Serial.println(motorStep);
-        break;   
+    if (incomingByte.equals(CMD_GOTORIGHT)) {
+      nStep = int32_t(Serial.parseInt());
+      if ((stepperMotor.driverStep + nStep) <= LIMIT_STEP_MAX) rotateSteps(&stepperMotor, nStep, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
       }
+      else if (incomingByte.equals(CMD_GOTOLEFT)) {
+        nStep = int32_t(Serial.parseInt());
+        if ((stepperMotor.driverStep - nStep) >= LIMIT_STEP_MIN) rotateSteps(&stepperMotor, nStep, DIR_LEFT, ACCELERATION_FAST, VELOCITY_FAST);
+        }
+        else if (incomingByte.equals(CMD_GOHOME)) {
+          MoveToInitialPosition(&stepperMotor);
+          stepperMotor.driverStep = 0;
+        }
+        else if (incomingByte.equals(CMD_STOP)) {
+          stepperMotor.stop(HARD);
+          stepperMotor.motorStatus = MOTOR_STOPPED;
+          } 
+          else if (incomingByte.equals(CMD_INFO)) {
+            stepperMotor.encoderStep = int32_t(0.5 + float(stepperMotor.encoder.getAngleMovedRaw()) * float(STEP_REVOLUTION) / 65535.0);
+            Serial.print("encoderStep = "); Serial.println(stepperMotor.encoderStep);
+            Serial.print("driverStep = "); Serial.println(stepperMotor.driverStep);
+            }  
+      
     incomingByte = Serial.read(); // read CR
   }
   
-  if (motorStatus != MOTOR_STOPPED) {
+  if (stepperMotor.motorStatus != MOTOR_STOPPED) {
     if (stepperMotor.getMotorState(POSITION_REACHED) == 0) {
       Serial.println("POSITION REACHED");
-      if (motorStatus == MOTOR_RUNNING_RIGHT) motorStep += nStep;
-        else if (motorStatus == MOTOR_RUNNING_LEFT) motorStep -= nStep;
-      motorStatus = checkSteps(motorStep); // Check and correct lost steps
+      if (stepperMotor.motorStatus == MOTOR_RUNNING_RIGHT) stepperMotor.driverStep += nStep;
+        else if (stepperMotor.motorStatus == MOTOR_RUNNING_LEFT) stepperMotor.driverStep -= nStep;
+      stepperMotor.encoderStep = int32_t(0.5 + float(stepperMotor.encoder.getAngleMovedRaw()) * float(STEP_REVOLUTION) / 65535.0);
+      checkSteps(&stepperMotor); // Check and correct lost steps
       }
     }
 }
@@ -104,51 +101,56 @@ void loop() {
 /************************************************************************
 Move carriage to initial position
 *************************************************************************/
-uint8_t MoveToInitialPosition()
+void MoveToInitialPosition(class Umotor *motor)
 {
   int32_t nMstps;
   
   // Set motor acceleration and velocity
-  stepperMotor.setMaxAcceleration(ACCELERATION_FAST); // Fast acceleration
-  stepperMotor.setMaxVelocity(VELOCITY_FAST);         // Fast velocity
+  motor->setMaxAcceleration(ACCELERATION_FAST); // Fast acceleration
+  motor->setMaxVelocity(VELOCITY_FAST);         // Fast velocity
 
   // Move carriage left to limit switch
-  if (limitSwitch.getLevel()){              // Limit switch not pressed (HIGH)
-    stepperMotor.runContinous(CW);          // Move carriage left
-    while (limitSwitch.getLevel());         // Wait for limit switch pressed
-    stepperMotor.stop(HARD);                // Stop carriage
+  if (!motor->getLimitSwitchStatus()){                 // Limit switch not pressed (HIGH)
+    motor->runContinous(CW);                 // Move carriage left
+    while (!motor->getLimitSwitchStatus());  // Wait for limit switch pressed
+    motor->stop(HARD);                       // Stop carriage
     }
 
    // Move carriage 600 steps right
   nMstps = int32_t(-1) * int32_t(MICRO_STEP) * 600; // Convert steps to microsteps
-  stepperMotor.moveSteps(nMstps);
+  motor->moveSteps(nMstps);
 
   // Wait for motor stopped
   while (stepperMotor.getMotorState(POSITION_REACHED));
 
   // Set motor acceleration and velocity
-  stepperMotor.setMaxAcceleration(ACCELERATION_SLOW); // Slow acceleration
-  stepperMotor.setMaxVelocity(VELOCITY_SLOW);         // Slow velocity
+  motor->setMaxAcceleration(ACCELERATION_SLOW); // Slow acceleration
+  motor->setMaxVelocity(VELOCITY_SLOW);         // Slow velocity
 
   // Move carriage left to limit switch
-  if (limitSwitch.getLevel()){              // Limit switch not pressed (HIGH)
-    stepperMotor.runContinous(CW);          // Move carriage left
-    while (limitSwitch.getLevel());         // Wait for limit switch pressed
-    stepperMotor.stop(HARD);                // Stop carriage
+  if (!motor->getLimitSwitchStatus()){                 // Limit switch not pressed (HIGH)
+    motor->runContinous(CW);                 // Move carriage left
+    while (!motor->getLimitSwitchStatus());  // Wait for limit switch pressed
+    motor->stop(HARD);                       // Stop carriage
   }
 
   // Move carriage 800 steps right
   nMstps = int32_t(-1) * int32_t(MICRO_STEP) * 800; // Convert steps to microsteps
-  stepperMotor.moveSteps(nMstps);
+  motor->moveSteps(nMstps);
 
-  // Wait for motor stopped
+  // Wait for position reached
   while (stepperMotor.getMotorState(POSITION_REACHED));
 
-  // Reset motor encoder and driver
-  stepperMotor.encoder.setHome();
-  stepperMotor.driver.setHome();
+  // Reset motor driver step counter
+  motor->driver.setHome();
+  motor->driverStep = 0;
 
-  return (MOTOR_STOPPED);
+   // Reset motor encoder step counter
+  motor->encoder.setHome();
+  motor->encoderStep = 0;
+
+  // Set motor status
+  motor->motorStatus = MOTOR_STOPPED;
 }
 
 
@@ -156,28 +158,27 @@ uint8_t MoveToInitialPosition()
 /************************************************************************ 
 Makes the motor rotate n steps
 *************************************************************************/
-uint8_t rotateSteps(int32_t nstps, uint8_t dir, float acceleration, float velocity)
+void rotateSteps(class Umotor *motor, int32_t nstps, uint8_t dir, float acceleration, float velocity)
 {
   int32_t nMstps;
   uint8_t mStatus = MOTOR_STOPPED;
 
   // Set motor acceleration and velocity
-  stepperMotor.setMaxAcceleration(acceleration);
-  stepperMotor.setMaxVelocity(velocity);
+  motor->setMaxAcceleration(acceleration);
+  motor->setMaxVelocity(velocity);
   
   switch (dir) {
     case DIR_RIGHT :  
       nMstps = int32_t(-1) * int32_t(MICRO_STEP) * nstps; // Convert steps to microsteps
-      stepperMotor.moveSteps(nMstps);
-      mStatus = MOTOR_RUNNING_RIGHT;
+      motor->moveSteps(nMstps);
+      motor->motorStatus = MOTOR_RUNNING_RIGHT;
       break;
     case DIR_LEFT :  
       nMstps = int32_t(MICRO_STEP) * nstps; // Convert steps to microsteps
-      stepperMotor.moveSteps(nMstps);
-      mStatus = MOTOR_RUNNING_LEFT;
+      motor->moveSteps(nMstps);
+      motor->motorStatus = MOTOR_RUNNING_LEFT;
       break;
-    }
-  return (mStatus);
+    };
 }
 
 
@@ -185,28 +186,28 @@ uint8_t rotateSteps(int32_t nstps, uint8_t dir, float acceleration, float veloci
 /************************************************************************ 
 Check and correct lost steps
 *************************************************************************/
-uint8_t checkSteps(int32_t mstep)
+void checkSteps(class Umotor *motor)
 {
-  int32_t encodStep, deltaStep;
+  int32_t drvStep, encStep, deltaStep;
 
-  encodStep = int32_t(0.5 + float(stepperMotor.encoder.getAngleMovedRaw()) * float(STEP_REVOLUTION) / 65535.0);
-  deltaStep = mstep - encodStep;
 
-  Serial.print("motorStep = "); Serial.println(mstep);
-  Serial.print("encoderStep = "); Serial.println(encodStep);
+  deltaStep = motor->driverStep - motor->encoderStep;
+
+  Serial.print("driverStep = "); Serial.println(motor->driverStep);
+  Serial.print("encoderStep = "); Serial.println(motor->encoderStep);
   Serial.print("deltaStep = "); Serial.println(deltaStep);
 
   while (deltaStep != 0) {
-    if (deltaStep > 0) rotateSteps(1, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
-      else rotateSteps(1, DIR_LEFT, ACCELERATION_SLOW, VELOCITY_SLOW);
-    encodStep = int32_t(0.5 + float(stepperMotor.encoder.getAngleMovedRaw()) * float(STEP_REVOLUTION) / 65535.0);  
-    deltaStep = mstep - encodStep;
-    Serial.print("motorStep = "); Serial.println(mstep);
-    Serial.print("encoderStep = "); Serial.println(encodStep);
+    if (deltaStep > 0) rotateSteps(motor, 1, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
+      else rotateSteps(motor, 1, DIR_LEFT, ACCELERATION_SLOW, VELOCITY_SLOW);
+    motor->encoderStep = int32_t(0.5 + float(stepperMotor.encoder.getAngleMovedRaw()) * float(STEP_REVOLUTION) / 65535.0);  
+    deltaStep = motor->driverStep - motor->encoderStep;
+    Serial.print("driverStep = "); Serial.println(motor->driverStep);
+    Serial.print("encoderStep = "); Serial.println(motor->encoderStep);
     Serial.print("deltaStep = "); Serial.println(deltaStep);
     }
 
-  return(MOTOR_STOPPED);
+  motor->motorStatus = MOTOR_STOPPED;
 }
 
 

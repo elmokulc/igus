@@ -1,5 +1,5 @@
 /*
-  Input.h -  - Digital input
+  Dinput.h - Digital input
 */
 
 #ifndef Dinput_h
