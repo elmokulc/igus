@@ -1,44 +1,56 @@
-/***/
+/********************************************************************************************
+*        File: Igus.ino   													                                        *
+*		  Version: 1.0 Initial release                                         				  		    *
+*        Date: May 19th, 2022  	                                         			              *
+*      Author: Olivier PERIA                                          					            *
+* Description: Drives Linear Motion Module IGUS                                             *
+*    Features:                                                                              *
+********************************************************************************************/
 
 #include "Umotor.h"
 
-#define LIMIT_STEP_MIN  0
-#define LIMIT_STEP_MAX  45000
+#define LIMIT_STEP_MIN  0      // Motor Home position
+#define LIMIT_STEP_MAX  45000  // Motor maximum position
 
-#define ACCELERATION_SLOW 200  // 200 steps/s^2
-#define ACCELERATION_FAST 1000 // 1000 steps/s^2
+#define ACCELERATION_SLOW 200  // Slow acceleration (steps/s^2)
+#define ACCELERATION_FAST 1000 // Fast acceleration (steps/s^2)
 
-#define VELOCITY_SLOW     200  // 200 steps/2
-#define VELOCITY_FAST     3000 // 3000 steps/s
+#define VELOCITY_SLOW   200    // Slow velocity (steps/s)
+#define VELOCITY_FAST   3000   // Fast velocity (steps/s)
 
-#define CMD_DELIMITER '#'
-#define CMD_GOTORIGHT "R"
-#define CMD_GOTOLEFT  "L"
-#define CMD_GOHOME    "H"
-#define CMD_STOP      "S"
-#define CMD_INFO      "I"
+#define LIMIT_SWITCH    PD2    // Limit switch pin
 
-#define LIMIT_SWITCH_PIN  2
+#define CMD_CR          '\n'
+#define CMD_DELIMITER   '#'
+#define CMD_GOTORIGHT   "R"
+#define CMD_GOTOLEFT    "L"
+#define CMD_GOHOME      "H"
+#define CMD_STOP        "S"
+#define CMD_INFO        "I"
+
+#define ACK_ERROR         "ERROR"
+#define ACK_REACHED       "REACHED"
+#define ACK_SYNTAX_ERROR  "SYNTAX ERROR"
 
 
-Umotor stepperMotor(LIMIT_SWITCH_PIN);
+Umotor stepperMotor(LIMIT_SWITCH);  // Instantiate stepperMotor object with limit switch connected to LIMIT_SWITCH pin
 
 int32_t motorSteps = 0;   // Absolute step target
 int32_t nSteps = 0;       // Relative step number
 
 
 
-/************************************************************************
-SETUP
-*************************************************************************/
+/********************************************************************************************
+* Initialize the stepper motor and move to initial position                                     *
+********************************************************************************************/
 void setup() {
   Serial.begin(9600);
   
-  // Setup uStepperS
-  stepperMotor.setup(NORMAL,STEP_REVOLUTION);         // Normal mode
+  // Setup stepperMotor
+  stepperMotor.setup(NORMAL, STEP_REVOLUTION);    // Normal mode
 
-  // Set motor driver direction
-  stepperMotor.driver.setShaftDirection(1);
+  // Set stepperMotor driver direction
+  stepperMotor.driver.setShaftDirection(1);   // Inverted direction
 
   // Move carriage to initial podition
   MoveToInitialPosition(&stepperMotor);
@@ -46,15 +58,14 @@ void setup() {
 
 
 
-/************************************************************************
-MAIN LOOP
-*************************************************************************/
+/********************************************************************************************
+* Main loop                                                                                 *
+********************************************************************************************/
 void loop() {
   if(Serial.available())
   {
     String incomingByte = Serial.readStringUntil(CMD_DELIMITER);
-    // Serial.print("cmd = "); Serial.println(incomingByte);
-
+    
     if (incomingByte.equals(CMD_GOTORIGHT)) {
       nSteps = int32_t(Serial.parseInt());
       if ((motorSteps + nSteps) <= LIMIT_STEP_MAX) stepperMotor.rotateSteps(nSteps, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
@@ -74,9 +85,8 @@ void loop() {
           else if (incomingByte.equals(CMD_INFO)) {
             Serial.print("targetStep = "); Serial.println(motorSteps);
             Serial.print("encoderStep = "); Serial.println(stepperMotor.getEncoderSteps());
-            }  
-      
-    incomingByte = Serial.read(); // read CR
+            }
+            else Serial.println(ACK_SYNTAX_ERROR);
   }
 
   if (stepperMotor.getMotorMode() != MOTOR_CHECKED) {
@@ -92,9 +102,11 @@ void loop() {
 
 
 
-/************************************************************************
-Move carriage to initial position
-*************************************************************************/
+/********************************************************************************************
+* Move carriage to initial position                                                         *
+*                                                                                           *
+* input : motor : stepper motor                                                             *
+********************************************************************************************/
 void MoveToInitialPosition(class Umotor *motor)
 {
   int32_t nMstps;
@@ -104,7 +116,7 @@ void MoveToInitialPosition(class Umotor *motor)
   motor->setMaxVelocity(VELOCITY_FAST);         // Fast velocity
 
   // Move carriage left to limit switch
-  if (!motor->getLimitSwitchState()) {      // Limit switch not pressed (HIGH)
+  if (!motor->getLimitSwitchState()) {      // Limit switch not pressed
     motor->runContinous(CCW);               // Move carriage left
     while (!motor->getLimitSwitchState());  // Wait for limit switch pressed
     motor->stop(HARD);                      // Stop carriage
@@ -137,15 +149,25 @@ void MoveToInitialPosition(class Umotor *motor)
   motor->driver.setHome();
   motor->encoder.setHome();
 
+  // Activates Motor brake
+  motor->setBrakeMode(COOLBRAKE);
+
   // Set motor mode to STOPPED
   motor->setMotorMode(MOTOR_STOPPED);
 }
 
 
 
-/************************************************************************ 
-Check and correct lost steps
-*************************************************************************/
+/********************************************************************************************
+* Check and correct lost steps                                                              *
+*                                                                                           *
+* Compare the encoder step counter to the motor step target. If different, move the motor   *
+* to make the encoder step counter equal to the motor step target                           *
+*                                                                                           *
+* input : motor : stepper motor                                                             *
+*         mstep : motor step target                                                         *
+********************************************************************************************/
+
 void checkSteps(class Umotor *motor, int32_t msteps)
 {
   int32_t encSteps, deltaSteps;
@@ -173,12 +195,15 @@ void checkSteps(class Umotor *motor, int32_t msteps)
 
 
 
-/************************************************************************
-Change distance (mm) to steps
-*************************************************************************/
+/********************************************************************************************
+* Change distance to steps                                                                  *
+*                                                                                           *
+*  input : dist : distance in mm                                                            *
+* return : fullsteps                                                                        *
+********************************************************************************************/
 int32_t DistanceToSteps(float dist)
 {
-  int32_t nStps = int32_t (dist * float(STEP_REVOLUTION) / 1.5);  // 1.5 mm/round
+  int32_t nStps = int32_t (dist * float(STEP_REVOLUTION) / 1.5);  // 1.5 mm per revolution
       
   return(nStps);
 }
