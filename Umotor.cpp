@@ -25,9 +25,9 @@
 Umotor::Umotor(int pin) : uStepperS()
 {
   switchPin = pin; 
-  pinMode(switchPin, INPUT);  // Digital INPUT MODE
+  pinMode(switchPin, INPUT);  // Digital pin mode set to INPUT
 
-  motorMode = MOTOR_STOPPED;  // Initial motor mode
+  motorMode = MOTOR_STOPPED;  // Initial motor mode set to STOPPED
 }
 
 
@@ -61,7 +61,8 @@ int32_t Umotor::getEncoderSteps()
 {
   int32_t encStps;
 
-  encStps = int32_t(0.5 + float(encoder.getAngleMovedRaw()) * float(STEP_REVOLUTION) / 65536.0);  // 2^16 positions per revolution
+  // Position read in raw data and converted to fullsteps (2^16 positions per revolution)
+  encStps = int32_t(0.5 + float(encoder.getAngleMovedRaw(false)) * float(STEP_REVOLUTION) / 65536.0);
   return(encStps);
 }
 
@@ -84,8 +85,9 @@ boolean Umotor::getLimitSwitchState()
 /********************************************************************************************
 * Gets the motor state                                                                      *
 *                                                                                           *
-* return : MOTOR_STOPPED : motor is stopped                                                 *
-*          MOTOR_CHECKED : lost steps checked and corrected                                 *
+* return : MOTOR_STOPPED : motor normaly stopped                                            *
+*          MOTOR_ABORTED : motor stopped after emergency stop                               *
+*          MOTOR_CHECKED : lost steps checked and corrected (position reached)              *
 *          MOTOR_RUNNING_RIGHT : motor is moving right                                      *
 *          MOTOR_RUNNING_LEFT  : motor is moving left                                       *
 ********************************************************************************************/
@@ -100,8 +102,9 @@ uint8_t Umotor::getMotorMode()
 * Sets the motor state                                                                      *
 *                                                                                           *
 * input : mode : motor state - Possible values :                                            *
-*                     MOTOR_STOPPED : motor is stopped                                      *
-*                     MOTOR_CHECKED : lost steps checked and corrected                      *
+*                     MOTOR_STOPPED : motor normaly stopped                                 *
+*                     MOTOR_ABORTED : motor stopped after emergency stop                    *
+*                     MOTOR_CHECKED : lost steps checked and corrected (position reached)   *
 *                     MOTOR_RUNNING_RIGHT : motor is moving right                           *
 *                     MOTOR_RUNNING_LEFT  : motor is moving left                            *
 ********************************************************************************************/
@@ -124,6 +127,7 @@ void Umotor::setMotorMode(uint8_t mode)
 void Umotor::rotateSteps(int32_t nstps, uint8_t dir, float acclr, float vlcty)
 {
   if (nstps) {
+
     int32_t nMstps;
 
     // Set motor acceleration and velocity
@@ -132,14 +136,14 @@ void Umotor::rotateSteps(int32_t nstps, uint8_t dir, float acclr, float vlcty)
   
     switch (dir) {
       case DIR_RIGHT :  
-        nMstps = int32_t(MICRO_STEP) * nstps; // Convert fullsteps to microsteps
-        moveSteps(nMstps);                    // Rotate the motor nMstps microsteps in right direction
-        motorMode = MOTOR_RUNNING_RIGHT;      // Set motor mode to Running Right
+        nMstps = int32_t(MICRO_STEP) * nstps; // Converts fullsteps to microsteps
+        moveSteps(nMstps);                    // Rotates the motor nMstps microsteps in right direction
+        motorMode = MOTOR_RUNNING_RIGHT;      // Sets motor mode to Running Right
         break;
       case DIR_LEFT :  
-        nMstps = int32_t(-1) * int32_t(MICRO_STEP) * nstps; // Convert fullsteps to microsteps
-        moveSteps(nMstps);                                  // Rotate the motor nMstps microsteps in left direction
-        motorMode = MOTOR_RUNNING_LEFT;                     // Set motor mode to Running Left
+        nMstps = int32_t(-1) * int32_t(MICRO_STEP) * nstps; // Converts fullsteps to microsteps
+        moveSteps(nMstps);                                  // Rotates the motor nMstps microsteps in left direction
+        motorMode = MOTOR_RUNNING_LEFT;                     // Sets motor mode to Running Left
         break;
       };
 

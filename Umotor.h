@@ -21,13 +21,14 @@
 #define STEP_REVOLUTION 400   // Mumber of steps per revolution
 #define MICRO_STEP      256   // Driver internal position counter is 256 microsteps per step
 
-#define DIR_RIGHT  0  // Right direction
-#define DIR_LEFT   1  // Left direction
+#define DIR_RIGHT  0  // Right Direction
+#define DIR_LEFT   1  // Left Direction
 
-#define MOTOR_STOPPED        0    // Motor mode Stopped
-#define MOTOR_CHECKED        1    // Motor mode Schecked
-#define MOTOR_RUNNING_RIGHT  2    // Motor mode Running Right
-#define MOTOR_RUNNING_LEFT   3    // Motor mode Running Left
+#define MOTOR_STOPPED        0    // Motor mode : Normaly Stopped
+#define MOTOR_ABORTED        1    // Motor mode : Stopped while moving (emergency stop)
+#define MOTOR_CHECKED        2    // Motor mode : Checked (position reached)
+#define MOTOR_RUNNING_RIGHT  3    // Motor mode : Running Right
+#define MOTOR_RUNNING_LEFT   4    // Motor mode : Running Left
 
 
 class Umotor : public uStepperS
