@@ -27,7 +27,7 @@ Umotor::Umotor(int pin) : uStepperS()
   switchPin = pin; 
   pinMode(switchPin, INPUT);  // Digital pin mode set to INPUT
 
-  motorMode = MOTOR_STOPPED;  // Initial motor mode set to STOPPED
+  motorMode = MOTOR_INIT;  // Initial motor mode set to INIT
 }
 
 
@@ -126,7 +126,7 @@ void Umotor::setMotorMode(uint8_t mode)
 ********************************************************************************************/
 void Umotor::rotateSteps(int32_t nstps, uint8_t dir, float acclr, float vlcty)
 {
-  if (nstps) {
+  if (nstps > 0) {
 
     int32_t nMstps;
 
@@ -137,17 +137,14 @@ void Umotor::rotateSteps(int32_t nstps, uint8_t dir, float acclr, float vlcty)
     switch (dir) {
       case DIR_RIGHT :  
         nMstps = int32_t(MICRO_STEP) * nstps; // Converts fullsteps to microsteps
-        moveSteps(nMstps);                    // Rotates the motor nMstps microsteps in right direction
         motorMode = MOTOR_RUNNING_RIGHT;      // Sets motor mode to Running Right
+        moveSteps(nMstps);                    // Rotates the motor nMstps microsteps in right direction 
         break;
       case DIR_LEFT :  
         nMstps = int32_t(-1) * int32_t(MICRO_STEP) * nstps; // Converts fullsteps to microsteps
-        moveSteps(nMstps);                                  // Rotates the motor nMstps microsteps in left direction
         motorMode = MOTOR_RUNNING_LEFT;                     // Sets motor mode to Running Left
+        moveSteps(nMstps);                                  // Rotates the motor nMstps microsteps in left direction
         break;
       };
-
-    // Activates Motor brake
-    setBrakeMode(COOLBRAKE);
     }
 }

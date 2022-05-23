@@ -4,7 +4,12 @@
 *        Date: May 19th, 2022  	                                         			              *
 *      Author: Olivier PERIA                                          					            *
 * Description: Drives Linear Motion Module IGUS                                             *
-*    Features:                                                                              *
+*    Features: Possible commands sent on serial line :                                      *
+*                 H or H# : Moving Home                                                     *
+*                 P or P# : Getting absolute current step Position                          *
+*                 S or S# : Emmergency Stop                                                 *
+*                 R#[arg] : Moving [arg] steps Right - Example: R#10000                     *
+*                 L#[arg] : Moving [arg] steps Left                                         *
 ********************************************************************************************/
 
 #include "Umotor.h"
@@ -25,15 +30,17 @@
 #define CMD_GOTOLEFT    "L"    // command : Move Left 
 #define CMD_GOHOME      "H"    // command : Move Home 
 #define CMD_STOP        "S"    // command : Emergency Stop 
-#define CMD_POSE        "P"    // command : Get Absolute Step Position 
+#define CMD_POSE        "P"    // command : Get absolute current step Position 
 
+#define ACK_START       "START MOVING"
 #define ACK_HOME        "HOME POSITION"
 #define ACK_REACHED     "POSITION REACHED"
-#define ACK_RUNNING     "MOTOR RUNNING"
-#define ACK_ABORTED     "ABORTED"
+#define ACK_WAIT        "PLEASE WAIT FOR POSITION REACHED"
 #define ACK_ERROR       "SYNTAX ERROR"
 #define ACK_INVALID     "INVALID ARGUMENT"
-
+#define ACK_OUTRANGE    "ARGUMENT OUT OF RANGE"
+#define ACK_ABORTED     "ABORTED"
+#define ACK_RESET       "MOTOR MUST BE RESETED"
 
 
 Umotor stepperMotor(LIMIT_SWITCH);  // Instantiates stepperMotor object with limit switch connected to LIMIT_SWITCH pin
@@ -44,7 +51,7 @@ int32_t nSteps = 0;       // Relative step number
 
 
 /********************************************************************************************
-* Initialize the stepper motor and move to initial position                                 *
+* Initializes the stepper motor and move to initial position                                 *
 ********************************************************************************************/
 void setup() {
   Serial.begin(9600);       // Sets the data rate for serial data transmission to 9600 baud
@@ -55,6 +62,9 @@ void setup() {
 
   // Set stepperMotor driver direction
   stepperMotor.driver.setShaftDirection(1);     // Inverted direction
+
+  // Set motor brake mode when motor is stopped
+  stepperMotor.setBrakeMode(COOLBRAKE);
 
   // Move carriage to initial podition
   MoveToInitialPosition(&stepperMotor);
@@ -68,55 +78,88 @@ void setup() {
 ********************************************************************************************/
 void loop() {
 
-  // Read command sent to serial line
+  // Reads and interprets the commands sent to serial line
 
   if(Serial.available())
   {
     // If motor aborted after emergency stop command sent
     if (stepperMotor.getMotorMode() == MOTOR_ABORTED) {
-      Serial.println(ACK_ABORTED);
+      Serial.println(ACK_RESET);
       String str = Serial.readString(); // Clear serial buffer
       }
-      // Else motor normaly working
+      // Else motor normaly stopped and checked
       else {
-        // Gets the String read from the serial buffer, up to the delimiter character CMD_DELIMITER if found,
-        // or the entire buffer if not found. The delimiter character itself is not returned in the string
+        // Gets the String read from the serial buffer, up to the delimiter character CMD_DELIMITER if found, or the entire 
+        // buffer if not found (after timeout defined in setup()). The delimiter character is not returned in the string
         String cmdString = Serial.readStringUntil(CMD_DELIMITER);  
     
-        // command Move Right
+        // Command Move Right
         if (cmdString.equals(CMD_GOTORIGHT)) {
-          // Looks for the next valid integer in the serial buffer, returns 0 if not found
-          nSteps = int32_t(Serial.parseInt());  
-          if ((motorSteps + nSteps) <= LIMIT_STEP_MAX) stepperMotor.rotateSteps(nSteps, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
-            else Serial.println(ACK_INVALID);
+          // Motor normally stopped and checked
+          if (stepperMotor.getMotorMode() == MOTOR_CHECKED) {
+            // Looks for the next valid integer in the serial buffer, returns 0 if not found (after timeout defined in setup())
+            nSteps = int32_t(Serial.parseInt());
+            if (nSteps <= 0) Serial.println(ACK_INVALID);
+              else if ((motorSteps + nSteps) > LIMIT_STEP_MAX) Serial.println(ACK_OUTRANGE);
+                    else {
+                      Serial.println(ACK_START);
+                      stepperMotor.rotateSteps(nSteps, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
+                      }
+            }
+            // Motor moving
+            else {
+              Serial.readString(); // Clear serial buffer
+              Serial.println(ACK_WAIT);
+              }
           }
-          // command Move Light
+          // Command Move Left
           else if (cmdString.equals(CMD_GOTOLEFT)) {
-            // Looks for the next valid integer in the serial buffer, returns 0 if not found
-            nSteps = int32_t(Serial.parseInt());  
-            if ((motorSteps - nSteps) >= LIMIT_STEP_MIN) stepperMotor.rotateSteps(nSteps, DIR_LEFT, ACCELERATION_FAST, VELOCITY_FAST);
-              else Serial.println(ACK_INVALID);
-            }
-            // command Move Home
-            else if (cmdString.equals(CMD_GOHOME)) {
-              MoveToInitialPosition(&stepperMotor);
-              motorSteps = 0;
-              nSteps = 0;
-              Serial.println(ACK_HOME);
-            }
-            // command Emergency Stop
-            else if (cmdString.equals(CMD_STOP)) {
-              stepperMotor.stop(HARD);
-              stepperMotor.setMotorMode(MOTOR_ABORTED);
-              Serial.println(ACK_ABORTED);
-              } 
-              // command Get Step Position
-              else if (cmdString.equals(CMD_POSE)) {
-                uint8_t mMode = stepperMotor.getMotorMode();
-                if ((mMode == MOTOR_RUNNING_RIGHT) || (mMode == MOTOR_RUNNING_LEFT)) Serial.println(stepperMotor.getDriverSteps()); 
-                  else Serial.println(motorSteps);
+            // Motor normally stopped and checked
+            if (stepperMotor.getMotorMode() == MOTOR_CHECKED) {
+              // Looks for the next valid integer in the serial buffer, returns 0 if not found (after timeout defined in setup())
+              nSteps = int32_t(Serial.parseInt());
+              if (nSteps <= 0) Serial.println(ACK_INVALID);
+                else if ((motorSteps - nSteps) < LIMIT_STEP_MIN) Serial.println(ACK_OUTRANGE);
+                    else {
+                      Serial.println(ACK_START);
+                      stepperMotor.rotateSteps(nSteps, DIR_LEFT, ACCELERATION_FAST, VELOCITY_FAST);
+                      }
+              }
+              // Motor moving
+              else {
+                Serial.readString(); // Clear serial buffer
+                Serial.println(ACK_WAIT);
                 }
-                else Serial.println(ACK_ERROR);
+            }
+            // Command Move Home
+            else if (cmdString.equals(CMD_GOHOME)) {
+              // Motor normally stopped and checked
+              if (stepperMotor.getMotorMode() == MOTOR_CHECKED) {
+                Serial.println(ACK_START);
+                MoveToInitialPosition(&stepperMotor);
+                Serial.println(ACK_HOME);
+                motorSteps = 0;
+                nSteps = 0;
+                }
+                // Motor moving
+                else {
+                  Serial.readString(); // Clear serial buffer
+                  Serial.println(ACK_WAIT);
+                  }
+              }
+              // Command Emergency Stop
+              else if (cmdString.equals(CMD_STOP)) {
+                stepperMotor.stop(HARD);
+                stepperMotor.setMotorMode(MOTOR_ABORTED);
+                Serial.println(ACK_ABORTED);
+                } 
+                // Command Get Step Position
+                else if (cmdString.equals(CMD_POSE)) {
+                  uint8_t mMode = stepperMotor.getMotorMode();
+                  if ((mMode == MOTOR_RUNNING_RIGHT) || (mMode == MOTOR_RUNNING_LEFT)) Serial.println(stepperMotor.getDriverSteps()); 
+                    else Serial.println(motorSteps);
+                  }
+                  else Serial.println(ACK_ERROR);
         }
   }
 
@@ -125,7 +168,8 @@ void loop() {
   uint8_t mMode = stepperMotor.getMotorMode();
   if (mMode != MOTOR_ABORTED) {
     // Motor not Checked and Driver position reached
-    if ((mMode != MOTOR_CHECKED) && (stepperMotor.getMotorState(POSITION_REACHED) == 0)) {              
+    if ((mMode != MOTOR_CHECKED) && (stepperMotor.getMotorState(POSITION_REACHED) == 0)) {    
+      // Updates motorSteps          
       if (mMode == MOTOR_RUNNING_RIGHT) motorSteps += nSteps;
         else if (mMode == MOTOR_RUNNING_LEFT) motorSteps -= nSteps;
       checkSteps(&stepperMotor, motorSteps); // Check and correct lost steps
@@ -144,6 +188,9 @@ void loop() {
 void MoveToInitialPosition(class Umotor *motor)
 {
   int32_t nMstps;
+  
+  // Set motor mode to INIT
+  motor->setMotorMode(MOTOR_INIT);
   
   // Set motor acceleration and velocity
   motor->setMaxAcceleration(ACCELERATION_FAST); // Fast acceleration
@@ -212,8 +259,9 @@ void checkSteps(class Umotor *motor, int32_t msteps)
   // Serial.print("deltaStep = "); Serial.println(deltaSteps);
 
   while (deltaSteps != 0) {
-    if (deltaSteps > 0) motor->rotateSteps(1, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
-      else motor->rotateSteps(1, DIR_LEFT, ACCELERATION_SLOW, VELOCITY_SLOW);
+    if (deltaSteps > 0) motor->rotateSteps(deltaSteps, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
+      else motor->rotateSteps(int32_t(-1) * deltaSteps, DIR_LEFT, ACCELERATION_SLOW, VELOCITY_SLOW);
+    while (motor->getMotorState(POSITION_REACHED)); // Wait for position reached
     encSteps = motor->getEncoderSteps();
     deltaSteps = msteps - encSteps;
 

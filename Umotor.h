@@ -24,7 +24,7 @@
 #define DIR_RIGHT  0  // Right Direction
 #define DIR_LEFT   1  // Left Direction
 
-#define MOTOR_STOPPED        0    // Motor mode : Normaly Stopped
+#define MOTOR_INIT           0    // Motor mode : Initialized
 #define MOTOR_ABORTED        1    // Motor mode : Stopped while moving (emergency stop)
 #define MOTOR_CHECKED        2    // Motor mode : Checked (position reached)
 #define MOTOR_RUNNING_RIGHT  3    // Motor mode : Running Right
