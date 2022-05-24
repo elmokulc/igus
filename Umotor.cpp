@@ -19,15 +19,16 @@
 /********************************************************************************************
 * Umotor class constructor                                                                  *
 * Inherites of uStepperS class defined in uStepperS Arduino library                         *
-*                                                                                           *
 * Initiates the motor limit switch pin and the motor mode                                   *
+*                                                                                           *
+* input : pin : Limit switch pin                                                            *
 ********************************************************************************************/
 Umotor::Umotor(int pin) : uStepperS()
 {
   switchPin = pin; 
-  pinMode(switchPin, INPUT);  // Digital pin mode set to INPUT
+  pinMode(switchPin, INPUT);  // Sets digital pin mode to INPUT
 
-  motorMode = MOTOR_INIT;  // Initial motor mode set to INIT
+  motorMode = MOTOR_INIT;     // Sets initial motor mode to INIT
 }
 
 
@@ -36,7 +37,7 @@ Umotor::Umotor(int pin) : uStepperS()
 * Gets the current position of the driver from reference position. The reference position   *
 * can be reseted at any time by using the driver.setHome() function                         *
 *                                                                                           *
-* return : number of fullsteps                                                              *
+* return : Number of fullsteps                                                              *
 ********************************************************************************************/
 int32_t Umotor::getDriverSteps()
 {
@@ -53,7 +54,7 @@ int32_t Umotor::getDriverSteps()
 * Gets the encoder step counter value from reference position. The reference position can   *
 * be reseted at any time by using the encoder.setHome() function                            *
 *                                                                                           *
-* return : number of fullsteps                                                              *
+* return : Number of fullsteps                                                              *
 ********************************************************************************************/
 
 // Returns encoder step counter value
@@ -71,8 +72,8 @@ int32_t Umotor::getEncoderSteps()
 /********************************************************************************************
 * Gets the motor limit switch state                                                         *
 *                                                                                           *
-* return : true if switch pressed                                                           *
-*          false if not                                                                     *
+* return : true  : Switch activated                                                         *
+*          false : Switch not activated                                                     *
 ********************************************************************************************/
 boolean Umotor::getLimitSwitchState()
 {
@@ -101,7 +102,7 @@ uint8_t Umotor::getMotorMode()
 /********************************************************************************************
 * Sets the motor state                                                                      *
 *                                                                                           *
-* input : mode : motor state - Possible values :                                            *
+* input : mode : Motor state - Possible values :                                            *
 *                     MOTOR_STOPPED : motor normaly stopped                                 *
 *                     MOTOR_ABORTED : motor stopped after emergency stop                    *
 *                     MOTOR_CHECKED : lost steps checked and corrected (position reached)   *

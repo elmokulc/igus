@@ -32,21 +32,27 @@
 #define CMD_STOP        "S"    // command : Emergency Stop 
 #define CMD_POSE        "P"    // command : Get absolute current step Position 
 
-#define ACK_START       "START MOVING"
+#define ACK_START       "MOVING..."
 #define ACK_HOME        "HOME POSITION"
+#define ACK_INIT        "MOVE HOME FIRST"
 #define ACK_REACHED     "POSITION REACHED"
-#define ACK_WAIT        "PLEASE WAIT FOR POSITION REACHED"
+#define ACK_WAIT        "INVALID COMMAND WHILE MOVING"
 #define ACK_ERROR       "SYNTAX ERROR"
 #define ACK_INVALID     "INVALID ARGUMENT"
 #define ACK_OUTRANGE    "ARGUMENT OUT OF RANGE"
 #define ACK_ABORTED     "ABORTED"
 #define ACK_RESET       "MOTOR MUST BE RESETED"
 
+typedef struct 
+{
+  int32_t motorSteps = 0;   // Absolute step target
+  int32_t nSteps = 0;       // Relative step number to move
+
+} step_rcd;
 
 Umotor stepperMotor(LIMIT_SWITCH);  // Instantiates stepperMotor object with limit switch connected to LIMIT_SWITCH pin
 
-int32_t motorSteps = 0;   // Absolute step target
-int32_t nSteps = 0;       // Relative step number
+step_rcd stepCntr;  // Step counter
 
 
 
@@ -65,10 +71,6 @@ void setup() {
 
   // Set motor brake mode when motor is stopped
   stepperMotor.setBrakeMode(COOLBRAKE);
-
-  // Move carriage to initial podition
-  MoveToInitialPosition(&stepperMotor);
-  Serial.println(ACK_HOME);
 }
 
 
@@ -78,101 +80,20 @@ void setup() {
 ********************************************************************************************/
 void loop() {
 
-  // Reads and interprets the commands sent to serial line
-
-  if(Serial.available())
-  {
-    // If motor aborted after emergency stop command sent
-    if (stepperMotor.getMotorMode() == MOTOR_ABORTED) {
-      Serial.println(ACK_RESET);
-      String str = Serial.readString(); // Clear serial buffer
-      }
-      // Else motor normaly stopped and checked
-      else {
-        // Gets the String read from the serial buffer, up to the delimiter character CMD_DELIMITER if found, or the entire 
-        // buffer if not found (after timeout defined in setup()). The delimiter character is not returned in the string
-        String cmdString = Serial.readStringUntil(CMD_DELIMITER);  
-    
-        // Command Move Right
-        if (cmdString.equals(CMD_GOTORIGHT)) {
-          // Motor normally stopped and checked
-          if (stepperMotor.getMotorMode() == MOTOR_CHECKED) {
-            // Looks for the next valid integer in the serial buffer, returns 0 if not found (after timeout defined in setup())
-            nSteps = int32_t(Serial.parseInt());
-            if (nSteps <= 0) Serial.println(ACK_INVALID);
-              else if ((motorSteps + nSteps) > LIMIT_STEP_MAX) Serial.println(ACK_OUTRANGE);
-                    else {
-                      Serial.println(ACK_START);
-                      stepperMotor.rotateSteps(nSteps, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
-                      }
-            }
-            // Motor moving
-            else {
-              Serial.readString(); // Clear serial buffer
-              Serial.println(ACK_WAIT);
-              }
-          }
-          // Command Move Left
-          else if (cmdString.equals(CMD_GOTOLEFT)) {
-            // Motor normally stopped and checked
-            if (stepperMotor.getMotorMode() == MOTOR_CHECKED) {
-              // Looks for the next valid integer in the serial buffer, returns 0 if not found (after timeout defined in setup())
-              nSteps = int32_t(Serial.parseInt());
-              if (nSteps <= 0) Serial.println(ACK_INVALID);
-                else if ((motorSteps - nSteps) < LIMIT_STEP_MIN) Serial.println(ACK_OUTRANGE);
-                    else {
-                      Serial.println(ACK_START);
-                      stepperMotor.rotateSteps(nSteps, DIR_LEFT, ACCELERATION_FAST, VELOCITY_FAST);
-                      }
-              }
-              // Motor moving
-              else {
-                Serial.readString(); // Clear serial buffer
-                Serial.println(ACK_WAIT);
-                }
-            }
-            // Command Move Home
-            else if (cmdString.equals(CMD_GOHOME)) {
-              // Motor normally stopped and checked
-              if (stepperMotor.getMotorMode() == MOTOR_CHECKED) {
-                Serial.println(ACK_START);
-                MoveToInitialPosition(&stepperMotor);
-                Serial.println(ACK_HOME);
-                motorSteps = 0;
-                nSteps = 0;
-                }
-                // Motor moving
-                else {
-                  Serial.readString(); // Clear serial buffer
-                  Serial.println(ACK_WAIT);
-                  }
-              }
-              // Command Emergency Stop
-              else if (cmdString.equals(CMD_STOP)) {
-                stepperMotor.stop(HARD);
-                stepperMotor.setMotorMode(MOTOR_ABORTED);
-                Serial.println(ACK_ABORTED);
-                } 
-                // Command Get Step Position
-                else if (cmdString.equals(CMD_POSE)) {
-                  uint8_t mMode = stepperMotor.getMotorMode();
-                  if ((mMode == MOTOR_RUNNING_RIGHT) || (mMode == MOTOR_RUNNING_LEFT)) Serial.println(stepperMotor.getDriverSteps()); 
-                    else Serial.println(motorSteps);
-                  }
-                  else Serial.println(ACK_ERROR);
-        }
-  }
-
-  // Lost steps test and correct
-
   uint8_t mMode = stepperMotor.getMotorMode();
-  if (mMode != MOTOR_ABORTED) {
+
+  // Reads and interprets the commands sent to serial line
+  if (Serial.available()) commandInterpreter(&stepperMotor, mMode);
+  
+    
+  // Lost steps test and correct
+  if ((mMode != MOTOR_INIT) && (mMode != MOTOR_ABORTED)) {
     // Motor not Checked and Driver position reached
     if ((mMode != MOTOR_CHECKED) && (stepperMotor.getMotorState(POSITION_REACHED) == 0)) {    
       // Updates motorSteps          
-      if (mMode == MOTOR_RUNNING_RIGHT) motorSteps += nSteps;
-        else if (mMode == MOTOR_RUNNING_LEFT) motorSteps -= nSteps;
-      checkSteps(&stepperMotor, motorSteps); // Check and correct lost steps
+      if (mMode == MOTOR_RUNNING_RIGHT) stepCntr.motorSteps += stepCntr.nSteps;
+        else if (mMode == MOTOR_RUNNING_LEFT) stepCntr.motorSteps -= stepCntr.nSteps;
+      checkSteps(&stepperMotor, &stepCntr); // Check and correct lost steps
       Serial.println(ACK_REACHED);
       }
     }
@@ -181,16 +102,129 @@ void loop() {
 
 
 /********************************************************************************************
+* Reads and interprets the commands sent to serial line                                     *
+*                                                                                           *
+* input : motor : Stepper motor                                                             *
+*         steps : Absolute and relative step values                                         *
+********************************************************************************************/
+void commandInterpreter(class Umotor *motor, step_rcd *steps)
+{
+uint8_t mMode = motor->getMotorMode();
+
+// If motor aborted after emergency stop command sent
+  if (mMode == MOTOR_ABORTED) {
+    Serial.println(ACK_RESET);
+    String str = Serial.readString(); // Clear serial buffer
+    }
+
+    // Else motor normaly stopped and checked
+    else {
+      // Gets the String read from the serial buffer, up to the delimiter character CMD_DELIMITER if found, or the entire 
+      // buffer if not found (after timeout defined in setup()). The delimiter character is not returned in the string
+      String cmdString = Serial.readStringUntil(CMD_DELIMITER);  
+  
+      // Command Emergency Stop
+      if (cmdString.equals(CMD_STOP)) {
+        motor->stop(HARD);
+        motor->setMotorMode(MOTOR_ABORTED);
+        Serial.println(ACK_ABORTED);
+        }       
+
+        // Command Move Right
+        else if (cmdString.equals(CMD_GOTORIGHT)) {
+          // Motor normally stopped and checked
+          if (mMode == MOTOR_CHECKED) {
+            // Looks for the next valid integer in the serial buffer, returns 0 if not found (after timeout defined in setup())
+            steps->nSteps = int32_t(Serial.parseInt());
+            if (steps->nSteps <= 0) Serial.println(ACK_INVALID);
+              else if ((steps->motorSteps + steps->nSteps) > LIMIT_STEP_MAX) Serial.println(ACK_OUTRANGE);
+                    else {
+                      Serial.println(ACK_START);
+                      Serial.println(steps->nSteps);
+                      motor->rotateSteps(steps->nSteps, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
+                      }
+            }
+            // Motor must moved Home first
+            else if (mMode == MOTOR_INIT) {
+              Serial.readString(); // Clear serial buffer
+              Serial.println(ACK_INIT);
+              }
+              // Motor moving
+              else {
+                Serial.readString(); // Clear serial buffer
+                Serial.println(ACK_WAIT);
+                }
+          }
+
+          // Command Move Left
+          else if (cmdString.equals(CMD_GOTOLEFT)) {
+            // Motor normally stopped and checked
+            if (mMode == MOTOR_CHECKED) {
+              // Looks for the next valid integer in the serial buffer, returns 0 if not found (after timeout defined in setup())
+              steps->nSteps = int32_t(Serial.parseInt());
+              if (steps->nSteps <= 0) Serial.println(ACK_INVALID);
+                else if ((steps->motorSteps - steps->nSteps) < LIMIT_STEP_MIN) Serial.println(ACK_OUTRANGE);
+                    else {
+                      Serial.println(ACK_START);
+                      motor->rotateSteps(steps->nSteps, DIR_LEFT, ACCELERATION_FAST, VELOCITY_FAST);
+                      }
+              }
+              // Motor must move Home first
+              else if (mMode == MOTOR_INIT) {
+                Serial.readString(); // Clear serial buffer
+                Serial.println(ACK_INIT);
+                }
+                // Motor moving
+                else {
+                  Serial.readString(); // Clear serial buffer
+                  Serial.println(ACK_WAIT);
+                  }
+            }
+
+            // Command Move Home
+            else if (cmdString.equals(CMD_GOHOME)) {
+              // Motor normally stopped and checked
+              if ((mMode == MOTOR_INIT) || (mMode == MOTOR_CHECKED)) {
+                Serial.println(ACK_START);
+                MoveToInitialPosition(motor, steps);
+                Serial.println(ACK_HOME);
+                }
+                // Motor moving
+                else {
+                  Serial.readString(); // Clear serial buffer
+                  Serial.println(ACK_WAIT);
+                  }
+              }
+
+              // Command Get Step Position
+              else if (cmdString.equals(CMD_POSE)) {
+                // Motor must move Home first
+                if (mMode == MOTOR_INIT) {
+                  Serial.readString(); // Clear serial buffer
+                  Serial.println(ACK_INIT);
+                  }
+                  // Motor moving
+                  else if ((mMode == MOTOR_RUNNING_RIGHT) || (mMode == MOTOR_RUNNING_LEFT)) Serial.println(stepperMotor.getDriverSteps()); 
+                    else Serial.println(steps->motorSteps);
+                }
+                else Serial.println(ACK_ERROR);
+      }
+}
+
+
+
+/********************************************************************************************
 * Move carriage to initial position                                                         *
 *                                                                                           *
-* input : motor : stepper motor                                                             *
+* input : motor : Stepper motor                                                             *
+*         steps : Absolute and relative step values                                         *
 ********************************************************************************************/
-void MoveToInitialPosition(class Umotor *motor)
+void MoveToInitialPosition(class Umotor *motor, step_rcd *steps)
 {
   int32_t nMstps;
   
   // Set motor mode to INIT
-  motor->setMotorMode(MOTOR_INIT);
+  // motor->setMotorMode(MOTOR_INIT);
   
   // Set motor acceleration and velocity
   motor->setMaxAcceleration(ACCELERATION_FAST); // Fast acceleration
@@ -230,6 +264,10 @@ void MoveToInitialPosition(class Umotor *motor)
   motor->driver.setHome();
   motor->encoder.setHome();
 
+  // Reset steps recod
+  steps->motorSteps = 0;
+  steps->nSteps = 0;
+
   // Activates Motor brake
   motor->setBrakeMode(COOLBRAKE);
 
@@ -246,13 +284,13 @@ void MoveToInitialPosition(class Umotor *motor)
 * to make the encoder step counter equal to the motor step target                           *
 *                                                                                           *
 * input : motor : stepper motor                                                             *
-*         mstep : motor step target                                                         *
+*         steps : Absolute and relative step values                                         *
 ********************************************************************************************/
 
-void checkSteps(class Umotor *motor, int32_t msteps)
+void checkSteps(class Umotor *motor, step_rcd *steps)
 {
   int32_t encSteps = motor->getEncoderSteps();
-  int32_t deltaSteps = msteps - encSteps;
+  int32_t deltaSteps = steps->motorSteps - encSteps;
 
   // Serial.print("targetStep = "); Serial.println(msteps);
   // Serial.print("encoderStep = "); Serial.println(encSteps);
@@ -263,7 +301,7 @@ void checkSteps(class Umotor *motor, int32_t msteps)
       else motor->rotateSteps(int32_t(-1) * deltaSteps, DIR_LEFT, ACCELERATION_SLOW, VELOCITY_SLOW);
     while (motor->getMotorState(POSITION_REACHED)); // Wait for position reached
     encSteps = motor->getEncoderSteps();
-    deltaSteps = msteps - encSteps;
+    deltaSteps = steps->motorSteps - encSteps;
 
     // Serial.print("targetStep = "); Serial.println(msteps);
     // Serial.print("encoderStep = "); Serial.println(encSteps);
