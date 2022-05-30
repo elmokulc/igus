@@ -4,10 +4,11 @@
 *        Date: May 19th, 2022  	                                         			              *
 *      Author: Olivier PERIA                                          					            *
 * Description: Drives Linear Motion Module IGUS                                             *
-*    Features: Possible commands sent on serial line :                                      *
+*    Features: Possible commands sent to serial line :                                      *
 *                 H or H# : Moving Home                                                     *
-*                 P or P# : Getting absolute current step Position                          *
+*                 P or P# : Getting current absolute step Position                          *
 *                 S or S# : Emmergency Stop                                                 *
+*                 h of h# : Printing Help                                                   *
 *                 R#[arg] : Moving [arg] steps Right - Example: R#10000                     *
 *                 L#[arg] : Moving [arg] steps Left                                         *
 ********************************************************************************************/
@@ -30,8 +31,10 @@
 #define CMD_GOTOLEFT    "L"    // command : Move Left 
 #define CMD_GOHOME      "H"    // command : Move Home 
 #define CMD_STOP        "S"    // command : Emergency Stop 
-#define CMD_POSE        "P"    // command : Get absolute current step Position 
+#define CMD_POSE        "P"    // command : Get current absolute step Position 
+#define CMD_HELP        "h"    // command : Help
 
+#define ACK_READY       "READY"
 #define ACK_START       "MOVING..."
 #define ACK_HOME        "HOME POSITION"
 #define ACK_INIT        "MOVE HOME FIRST"
@@ -45,14 +48,16 @@
 
 typedef struct 
 {
-  int32_t motorSteps = 0;   // Absolute step target
-  int32_t nSteps = 0;       // Relative step number to move
+  int32_t absSteps = 0;   // Absolute step position (target position)
+  int32_t nSteps = 0;     // Relative step position
 
 } step_rcd;
 
 Umotor stepperMotor(LIMIT_SWITCH);  // Instantiates stepperMotor object with limit switch connected to LIMIT_SWITCH pin
 
-step_rcd stepCntr;  // Step counter
+step_rcd stepCntr;  // Step counter (absolute and relative position)
+
+uint8_t mMode;      // Motor mode
 
 
 
@@ -71,6 +76,8 @@ void setup() {
 
   // Set motor brake mode when motor is stopped
   stepperMotor.setBrakeMode(COOLBRAKE);
+
+  Serial.println(ACK_READY);
 }
 
 
@@ -80,20 +87,18 @@ void setup() {
 ********************************************************************************************/
 void loop() {
 
-  uint8_t mMode = stepperMotor.getMotorMode();
-
   // Reads and interprets the commands sent to serial line
-  if (Serial.available()) commandInterpreter(&stepperMotor, mMode);
-  
-    
-  // Lost steps test and correct
+  if (Serial.available()) commandInterpreter(&stepperMotor, &stepCntr);
+
+  // Lost steps detection and correction
+  mMode = stepperMotor.getMotorMode();
   if ((mMode != MOTOR_INIT) && (mMode != MOTOR_ABORTED)) {
-    // Motor not Checked and Driver position reached
+    // Motor not checked and Driver position reached
     if ((mMode != MOTOR_CHECKED) && (stepperMotor.getMotorState(POSITION_REACHED) == 0)) {    
-      // Updates motorSteps          
-      if (mMode == MOTOR_RUNNING_RIGHT) stepCntr.motorSteps += stepCntr.nSteps;
-        else if (mMode == MOTOR_RUNNING_LEFT) stepCntr.motorSteps -= stepCntr.nSteps;
-      checkSteps(&stepperMotor, &stepCntr); // Check and correct lost steps
+      // Updates absolute step position          
+      if (mMode == MOTOR_RUNNING_RIGHT) stepCntr.absSteps += stepCntr.nSteps;
+        else if (mMode == MOTOR_RUNNING_LEFT) stepCntr.absSteps -= stepCntr.nSteps;
+      checkSteps(&stepperMotor, &stepCntr); // Checks and corrects lost steps
       Serial.println(ACK_REACHED);
       }
     }
@@ -104,11 +109,12 @@ void loop() {
 /********************************************************************************************
 * Reads and interprets the commands sent to serial line                                     *
 *                                                                                           *
-* input : motor : Stepper motor                                                             *
-*         steps : Absolute and relative step values                                         *
+* input : motor : stepper motor                                                             *
+*         pose  : absolute and relative step positions                                      *
 ********************************************************************************************/
-void commandInterpreter(class Umotor *motor, step_rcd *steps)
+void commandInterpreter(Umotor *motor, step_rcd *pose)
 {
+  // Gets motor mode
 uint8_t mMode = motor->getMotorMode();
 
 // If motor aborted after emergency stop command sent
@@ -135,13 +141,12 @@ uint8_t mMode = motor->getMotorMode();
           // Motor normally stopped and checked
           if (mMode == MOTOR_CHECKED) {
             // Looks for the next valid integer in the serial buffer, returns 0 if not found (after timeout defined in setup())
-            steps->nSteps = int32_t(Serial.parseInt());
-            if (steps->nSteps <= 0) Serial.println(ACK_INVALID);
-              else if ((steps->motorSteps + steps->nSteps) > LIMIT_STEP_MAX) Serial.println(ACK_OUTRANGE);
+            pose->nSteps = int32_t(Serial.parseInt());
+            if (pose->nSteps <= 0) Serial.println(ACK_INVALID);
+              else if ((pose->absSteps + pose->nSteps) > LIMIT_STEP_MAX) Serial.println(ACK_OUTRANGE);
                     else {
                       Serial.println(ACK_START);
-                      Serial.println(steps->nSteps);
-                      motor->rotateSteps(steps->nSteps, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
+                      motor->rotateSteps(pose->nSteps, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
                       }
             }
             // Motor must moved Home first
@@ -161,12 +166,12 @@ uint8_t mMode = motor->getMotorMode();
             // Motor normally stopped and checked
             if (mMode == MOTOR_CHECKED) {
               // Looks for the next valid integer in the serial buffer, returns 0 if not found (after timeout defined in setup())
-              steps->nSteps = int32_t(Serial.parseInt());
-              if (steps->nSteps <= 0) Serial.println(ACK_INVALID);
-                else if ((steps->motorSteps - steps->nSteps) < LIMIT_STEP_MIN) Serial.println(ACK_OUTRANGE);
+              pose->nSteps = int32_t(Serial.parseInt());
+              if (pose->nSteps <= 0) Serial.println(ACK_INVALID);
+                else if ((pose->absSteps - pose->nSteps) < LIMIT_STEP_MIN) Serial.println(ACK_OUTRANGE);
                     else {
                       Serial.println(ACK_START);
-                      motor->rotateSteps(steps->nSteps, DIR_LEFT, ACCELERATION_FAST, VELOCITY_FAST);
+                      motor->rotateSteps(pose->nSteps, DIR_LEFT, ACCELERATION_FAST, VELOCITY_FAST);
                       }
               }
               // Motor must move Home first
@@ -186,7 +191,7 @@ uint8_t mMode = motor->getMotorMode();
               // Motor normally stopped and checked
               if ((mMode == MOTOR_INIT) || (mMode == MOTOR_CHECKED)) {
                 Serial.println(ACK_START);
-                MoveToInitialPosition(motor, steps);
+                MoveToInitialPosition(motor, pose);
                 Serial.println(ACK_HOME);
                 }
                 // Motor moving
@@ -196,7 +201,7 @@ uint8_t mMode = motor->getMotorMode();
                   }
               }
 
-              // Command Get Step Position
+              // Command Get Absolute Step Position
               else if (cmdString.equals(CMD_POSE)) {
                 // Motor must move Home first
                 if (mMode == MOTOR_INIT) {
@@ -205,26 +210,35 @@ uint8_t mMode = motor->getMotorMode();
                   }
                   // Motor moving
                   else if ((mMode == MOTOR_RUNNING_RIGHT) || (mMode == MOTOR_RUNNING_LEFT)) Serial.println(stepperMotor.getDriverSteps()); 
-                    else Serial.println(steps->motorSteps);
+                    else Serial.println(pose->absSteps);
                 }
-                else Serial.println(ACK_ERROR);
+
+                // Command help
+                else if (cmdString.equals(CMD_HELP)) {
+                  Serial.println("H or H# : Moving Home");
+                  Serial.println("P or P# : Getting current absolute step Position");
+                  Serial.println("S or S# : Emmergency Stop");
+                  Serial.println("h of h# : Printing Help");
+                  Serial.println("R#[arg] : Moving [arg] steps Right - Example: R#10000");
+                  Serial.println("L#[arg] : Moving [arg] steps Left");
+                  }
+
+                  // Command not found
+                  else Serial.println(ACK_ERROR);
       }
 }
 
 
 
 /********************************************************************************************
-* Move carriage to initial position                                                         *
+* Moves the carriage to initial position                                                    *
 *                                                                                           *
-* input : motor : Stepper motor                                                             *
-*         steps : Absolute and relative step values                                         *
+* input : motor : stepper motor                                                             *
+*         pose  : rbsolute and relative step positions                                      *
 ********************************************************************************************/
-void MoveToInitialPosition(class Umotor *motor, step_rcd *steps)
+void MoveToInitialPosition(Umotor *motor, step_rcd *pose)
 {
   int32_t nMstps;
-  
-  // Set motor mode to INIT
-  // motor->setMotorMode(MOTOR_INIT);
   
   // Set motor acceleration and velocity
   motor->setMaxAcceleration(ACCELERATION_FAST); // Fast acceleration
@@ -260,52 +274,47 @@ void MoveToInitialPosition(class Umotor *motor, step_rcd *steps)
   // Wait for position reached
   while (motor->getMotorState(POSITION_REACHED));
 
-  // Reset motor driver and encoder step counter
+  // Reset driver and encoder step counters
   motor->driver.setHome();
   motor->encoder.setHome();
 
-  // Reset steps recod
-  steps->motorSteps = 0;
-  steps->nSteps = 0;
+  // Reset motor step positions
+  pose->absSteps = 0;
+  pose->nSteps = 0;
 
   // Activates Motor brake
   motor->setBrakeMode(COOLBRAKE);
 
-  // Set motor mode to CHECKED (position reached)
+  // Set motor mode to CHECKED (target position reached)
   motor->setMotorMode(MOTOR_CHECKED);
 }
 
 
 
 /********************************************************************************************
-* Check and correct lost steps                                                              *
+* Lost steps detection and correction                                                       *
 *                                                                                           *
-* Compare the encoder step counter to the motor step target. If different, move the motor   *
-* to make the encoder step counter equal to the motor step target                           *
+* Compares the encoder step counter (real position) with the motor step counter (target     *
+* position). If different, move the motor to make the encoder step position equal to the    *
+* motor step position                                                                       *
 *                                                                                           *
 * input : motor : stepper motor                                                             *
-*         steps : Absolute and relative step values                                         *
+*         pose  : absolute and relative step positions                                      *
 ********************************************************************************************/
 
-void checkSteps(class Umotor *motor, step_rcd *steps)
+void checkSteps(class Umotor *motor, step_rcd *pose)
 {
-  int32_t encSteps = motor->getEncoderSteps();
-  int32_t deltaSteps = steps->motorSteps - encSteps;
-
-  // Serial.print("targetStep = "); Serial.println(msteps);
-  // Serial.print("encoderStep = "); Serial.println(encSteps);
-  // Serial.print("deltaStep = "); Serial.println(deltaSteps);
+  // Error between Motor target step position and Encoder real step position
+  int32_t deltaSteps = pose->absSteps - motor->getEncoderSteps();
 
   while (deltaSteps != 0) {
-    if (deltaSteps > 0) motor->rotateSteps(deltaSteps, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);
-      else motor->rotateSteps(int32_t(-1) * deltaSteps, DIR_LEFT, ACCELERATION_SLOW, VELOCITY_SLOW);
-    while (motor->getMotorState(POSITION_REACHED)); // Wait for position reached
-    encSteps = motor->getEncoderSteps();
-    deltaSteps = steps->motorSteps - encSteps;
 
-    // Serial.print("targetStep = "); Serial.println(msteps);
-    // Serial.print("encoderStep = "); Serial.println(encSteps);
-    // Serial.print("deltaStep = "); Serial.println(deltaSteps);
+    if (deltaSteps > 0) motor->rotateSteps(deltaSteps, DIR_RIGHT, ACCELERATION_FAST, VELOCITY_FAST);  // Move right
+      else motor->rotateSteps(int32_t(-1) * deltaSteps, DIR_LEFT, ACCELERATION_SLOW, VELOCITY_SLOW);  // Move left
+
+    while (motor->getMotorState(POSITION_REACHED));   // Wait for position reached
+  
+    deltaSteps = pose->absSteps - motor->getEncoderSteps();
     }
 
   motor->setMotorMode(MOTOR_CHECKED);

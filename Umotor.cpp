@@ -4,8 +4,8 @@
 *        Date: May 19th, 2022  	                                         			              *
 *      Author: Olivier PERIA                                          					            *
 * Description: Umotor class implementation used with the the uStepperS Arduino library      *
-*    Features: - Gets the current position of the motor driver                              *
-*              - Gets the encoder step counter value                                        *
+*    Features: - Gets the position of the motor driver                                      *
+*              - Gets the position of the motor encoder                                     *
 *              - Gets the motor limit switch state                                          *
 *              - Gets the motor state                                                       *
 *              - Sets the motor state                                                       *
@@ -18,8 +18,8 @@
 
 /********************************************************************************************
 * Umotor class constructor                                                                  *
-* Inherites of uStepperS class defined in uStepperS Arduino library                         *
-* Initiates the motor limit switch pin and the motor mode                                   *
+* - Inherites of uStepperS class defined in uStepperS Arduino library                         *
+* - Initiates the motor limit switch pin and the motor mode                                   *
 *                                                                                           *
 * input : pin : Limit switch pin                                                            *
 ********************************************************************************************/
@@ -37,33 +37,29 @@ Umotor::Umotor(int pin) : uStepperS()
 * Gets the current position of the driver from reference position. The reference position   *
 * can be reseted at any time by using the driver.setHome() function                         *
 *                                                                                           *
-* return : Number of fullsteps                                                              *
+* return : number of fullsteps                                                              *
 ********************************************************************************************/
 int32_t Umotor::getDriverSteps()
 {
-  int32_t drvStps;
-
   // Position read in microsteps and converted to fullsteps (MICRO_STEP microsteps per fullsteps)
-  drvStps = int32_t(0.5 + float(driver.getPosition()) / float(MICRO_STEP));   
+  int32_t drvStps = int32_t(0.5 + float(driver.getPosition()) / float(MICRO_STEP));
+  
   return(drvStps);
 }
 
 
 
 /********************************************************************************************
-* Gets the encoder step counter value from reference position. The reference position can   *
-* be reseted at any time by using the encoder.setHome() function                            *
+* Gets the current position of the encoder from reference position. The reference position  *
+* can be reseted at any time by using the encoder.setHome() function                        *
 *                                                                                           *
-* return : Number of fullsteps                                                              *
+* return : number of fullsteps                                                              *
 ********************************************************************************************/
-
-// Returns encoder step counter value
 int32_t Umotor::getEncoderSteps()
 {
-  int32_t encStps;
-
   // Position read in raw data and converted to fullsteps (2^16 positions per revolution)
-  encStps = int32_t(0.5 + float(encoder.getAngleMovedRaw(false)) * float(STEP_REVOLUTION) / 65536.0);
+  int32_t encStps = int32_t(0.5 + float(encoder.getAngleMovedRaw(false)) * float(STEP_REVOLUTION) / 65536.0);
+
   return(encStps);
 }
 
@@ -72,8 +68,8 @@ int32_t Umotor::getEncoderSteps()
 /********************************************************************************************
 * Gets the motor limit switch state                                                         *
 *                                                                                           *
-* return : true  : Switch activated                                                         *
-*          false : Switch not activated                                                     *
+* return : true  : switch activated                                                         *
+*          false : switch not activated                                                     *
 ********************************************************************************************/
 boolean Umotor::getLimitSwitchState()
 {
@@ -141,6 +137,7 @@ void Umotor::rotateSteps(int32_t nstps, uint8_t dir, float acclr, float vlcty)
         motorMode = MOTOR_RUNNING_RIGHT;      // Sets motor mode to Running Right
         moveSteps(nMstps);                    // Rotates the motor nMstps microsteps in right direction 
         break;
+
       case DIR_LEFT :  
         nMstps = int32_t(-1) * int32_t(MICRO_STEP) * nstps; // Converts fullsteps to microsteps
         motorMode = MOTOR_RUNNING_LEFT;                     // Sets motor mode to Running Left
