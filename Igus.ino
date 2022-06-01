@@ -62,9 +62,10 @@ uint8_t mMode;      // Motor mode
 
 
 /********************************************************************************************
-* Initializes the stepper motor and move to initial position                                 *
+* Initializes the stepper motor and moves to initial position                               *
 ********************************************************************************************/
 void setup() {
+
   Serial.begin(9600);       // Sets the data rate for serial data transmission to 9600 baud
   Serial.setTimeout(100);   // sets the maximum milliseconds to wait for serial data to 500
   
@@ -85,8 +86,8 @@ void setup() {
 /********************************************************************************************
 * Main loop                                                                                 *
 ********************************************************************************************/
-void loop() {
-
+void loop() 
+{
   // Reads and interprets the commands sent to serial line
   if (Serial.available()) commandInterpreter(&stepperMotor, &stepCntr);
 
@@ -98,7 +99,8 @@ void loop() {
       // Updates absolute step position          
       if (mMode == MOTOR_RUNNING_RIGHT) stepCntr.absSteps += stepCntr.nSteps;
         else if (mMode == MOTOR_RUNNING_LEFT) stepCntr.absSteps -= stepCntr.nSteps;
-      checkSteps(&stepperMotor, &stepCntr); // Checks and corrects lost steps
+      // Checks and corrects lost steps  
+      checkSteps(&stepperMotor, &stepCntr);
       Serial.println(ACK_REACHED);
       }
     }
@@ -115,9 +117,9 @@ void loop() {
 void commandInterpreter(Umotor *motor, step_rcd *pose)
 {
   // Gets motor mode
-uint8_t mMode = motor->getMotorMode();
+  uint8_t mMode = motor->getMotorMode();
 
-// If motor aborted after emergency stop command sent
+  // If motor aborted after emergency stop command sent
   if (mMode == MOTOR_ABORTED) {
     Serial.println(ACK_RESET);
     String str = Serial.readString(); // Clear serial buffer
@@ -208,12 +210,10 @@ uint8_t mMode = motor->getMotorMode();
                   Serial.readString(); // Clear serial buffer
                   Serial.println(ACK_INIT);
                   }
-                  // Motor moving
-                  else if ((mMode == MOTOR_RUNNING_RIGHT) || (mMode == MOTOR_RUNNING_LEFT)) Serial.println(stepperMotor.getDriverSteps()); 
-                    else Serial.println(pose->absSteps);
+                  else Serial.println(stepperMotor.getEncoderSteps());
                 }
 
-                // Command help
+                // Command Help
                 else if (cmdString.equals(CMD_HELP)) {
                   Serial.println("H or H# : Moving Home");
                   Serial.println("P or P# : Getting current absolute step Position");
