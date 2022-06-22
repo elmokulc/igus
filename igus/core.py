@@ -92,7 +92,7 @@ class IGUS:
         
     def move_home(self):
         self.send_msg('H')
-        self.check_move(reach_msg='HOME POSITION\r\n') 
+        self.check_cmd(reach_msg='HOME POSITION\r\n') 
            
     def move_position(self, value, unit="mm", direction="R"):
         """_summary_
@@ -109,10 +109,10 @@ class IGUS:
         print(f'{direction} -- {value} -- step ')
         value = round(value)
         self.send_msg(f'{direction}#{value}')
-        self.check_move()
+        self.check_cmd()
 
     @thrd
-    def check_move(self, reach_msg='POSITION REACHED\r\n'):
+    def check_cmd(self, reach_msg='POSITION REACHED\r\n'):
         self.on_move = True
         while self.read_msg() != reach_msg:
             sleep(0.5)
@@ -144,13 +144,25 @@ class IGUS:
         else : 
             return float(self.read_msg())
             
-        
+    def set_max_velocity(self, value):
+        self.send_msg(f'VF#{value}')
+        self.check_cmd(reach_msg='CMD DONE\r\n')
+
+
+    def set_mode(self, mode="linear"):
+        map_dic = {
+            "linear":0,
+            "rotate":1
+        }        
+        self.send_msg(f'M#{map_dic[mode]}')
+        self.check_cmd(reach_msg='CMD DONE\r\n')
+
 if __name__ == '__main__':
     # values = [10, 20, 30, 35]
-    # igus = IGUS(port="/dev/ttyUSB2")
+    igus = IGUS(port="/dev/ttyUSB2")
     # igus.move_home()
     # igus.run_pattern(values, unit="mm", direction="R")
     # igus.display_help()
-    print(serial_ports())
+    # print(serial_ports())
     
     

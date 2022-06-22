@@ -47,6 +47,7 @@
 #define ACK_OUTRANGE    "ARGUMENT OUT OF RANGE"
 #define ACK_ABORTED     "ABORTED"
 #define ACK_RESET       "MOTOR MUST BE RESETED"
+#define ACK_DONE        "CMD DONE"
 
 #define MD_LINEAR 0
 #define MD_ROTATE 1
@@ -255,12 +256,14 @@ void commandInterpreter(Umotor *motor, step_rcd *pose)
                   
                   WK_MODE = int32_t(Serial.parseInt());
                   Serial.readString(); // Clear serial buffer
+                  Serial.println(ACK_DONE);
                   }
                   
                   else if (cmdString.equals(SET_VF)){
                     
                     VELOCITY_FAST = int32_t(Serial.parseInt());
                     Serial.readString(); // Clear serial buffer
+                    Serial.println(ACK_DONE);
                     }
 
                   // Command not found
