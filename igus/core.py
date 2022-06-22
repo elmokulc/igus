@@ -2,6 +2,36 @@ import serial
 from threading import Thread
 from functools import wraps
 from time import sleep
+import glob 
+import sys
+
+def serial_ports():
+    """ Lists serial port names
+
+        :raises EnvironmentError:
+            On unsupported or unknown platforms
+        :returns:
+            A list of the serial ports available on the system
+    """
+    if sys.platform.startswith('win'):
+        ports = ['COM%s' % (i + 1) for i in range(256)]
+    elif sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):
+        # this excludes your current terminal "/dev/tty"
+        ports = glob.glob('/dev/tty[A-Za-z]*')
+    elif sys.platform.startswith('darwin'):
+        ports = glob.glob('/dev/tty.*')
+    else:
+        raise EnvironmentError('Unsupported platform')
+
+    result = []
+    for port in ports:
+        try:
+            s = serial.Serial(port)
+            s.close()
+            result.append(port)
+        except (OSError, serial.SerialException):
+            pass
+    return result
 
 def thrd(f):
     ''' This decorator executes a function in a Thread'''
@@ -77,6 +107,7 @@ class IGUS:
             value = self.get_meters_value(value = value)
         print(f'{direction} -- {round(value*0.00375)} -- mm ')
         print(f'{direction} -- {value} -- step ')
+        value = round(value)
         self.send_msg(f'{direction}#{value}')
         self.check_move()
 
@@ -89,7 +120,7 @@ class IGUS:
         self.on_move = False
         
     def get_meters_value(self, value):
-        return round(value/0.00375)
+        return value/0.00375
     
     @thrd  
     def run_pattern(self, values, unit="mm", direction="R"):
@@ -115,10 +146,11 @@ class IGUS:
             
         
 if __name__ == '__main__':
-    values = [10, 20, 30, 35]
-    igus = IGUS(port="/dev/ttyUSB2")
-    igus.move_home()
+    # values = [10, 20, 30, 35]
+    # igus = IGUS(port="/dev/ttyUSB2")
+    # igus.move_home()
     # igus.run_pattern(values, unit="mm", direction="R")
     # igus.display_help()
+    print(serial_ports())
     
     
