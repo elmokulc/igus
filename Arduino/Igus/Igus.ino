@@ -1,8 +1,8 @@
 /********************************************************************************************
-*        File: Igus.ino   													                                        *
-*		  Version: 1.0 Initial release                                         				  		    *
-*        Date: May 19th, 2022  	                                         			              *
-*      Author: Olivier PERIA                                          					            *
+*        File: Igus.ino                                                                     *
+*     Version: 1.0 Initial release                                                          *
+*        Date: May 19th, 2022                                                               *
+*      Author: Olivier PERIA                                                                *
 * Description: Drives Linear Motion Module IGUS                                             *
 *    Features: Possible commands sent to serial line :                                      *
 *                 H or H# : Moving Home                                                     *
@@ -18,11 +18,10 @@
 #define LIMIT_STEP_MIN  0      // Motor Home position
 #define LIMIT_STEP_MAX  45000  // Motor maximum position
 
+#define VELOCITY_SLOW   200 // Slow velocity (steps/s)
+
 #define ACCELERATION_SLOW 200  // Slow acceleration (steps/s^2)
 #define ACCELERATION_FAST 1000 // Fast acceleration (steps/s^2)
-
-#define VELOCITY_SLOW   200    // Slow velocity (steps/s)
-#define VELOCITY_FAST   3000   // Fast velocity (steps/s)
 
 #define LIMIT_SWITCH    PD2    // Limit switch pin
 
@@ -32,7 +31,10 @@
 #define CMD_GOHOME      "H"    // command : Move Home 
 #define CMD_STOP        "S"    // command : Emergency Stop 
 #define CMD_POSE        "P"    // command : Get current absolute step Position 
+#define CMD_MODE        "M"      // command : Request to change mode
 #define CMD_HELP        "h"    // command : Help
+
+#define SET_VF          "VF" // Set velocity fast
 
 #define ACK_READY       "READY"
 #define ACK_START       "MOVING..."
@@ -45,6 +47,9 @@
 #define ACK_OUTRANGE    "ARGUMENT OUT OF RANGE"
 #define ACK_ABORTED     "ABORTED"
 #define ACK_RESET       "MOTOR MUST BE RESETED"
+
+#define MD_LINEAR 0
+#define MD_ROTATE 1
 
 typedef struct 
 {
@@ -59,6 +64,9 @@ step_rcd stepCntr;  // Step counter (absolute and relative position)
 
 uint8_t mMode;      // Motor mode
 
+
+int32_t VELOCITY_FAST = 100; // Fast velocity (steps/s) VMAX = 3000
+uint8_t WK_MODE = MD_LINEAR;   // Working mode can be : "MD_LINEAR", "MD_ROTATE" or "MD_SETUP"
 
 
 /********************************************************************************************
@@ -91,21 +99,39 @@ void loop()
   // Reads and interprets the commands sent to serial line
   if (Serial.available()) commandInterpreter(&stepperMotor, &stepCntr);
 
-  // Lost steps detection and correction
-  mMode = stepperMotor.getMotorMode();
-  if ((mMode != MOTOR_INIT) && (mMode != MOTOR_ABORTED)) {
-    // Motor not checked and Driver position reached
-    if ((mMode != MOTOR_CHECKED) && (stepperMotor.getMotorState(POSITION_REACHED) == 0)) {    
-      // Updates absolute step position          
-      if (mMode == MOTOR_RUNNING_RIGHT) stepCntr.absSteps += stepCntr.nSteps;
-        else if (mMode == MOTOR_RUNNING_LEFT) stepCntr.absSteps -= stepCntr.nSteps;
-      // Checks and corrects lost steps  
-      checkSteps(&stepperMotor, &stepCntr);
-      Serial.println(ACK_REACHED);
-      }
+  if (WK_MODE == MD_LINEAR){
+      // Lost steps detection and correction
+      mMode = stepperMotor.getMotorMode();
+      if ((mMode != MOTOR_INIT) && (mMode != MOTOR_ABORTED)) {
+        // Motor not checked and Driver position reached
+        if ((mMode != MOTOR_CHECKED) && (stepperMotor.getMotorState(POSITION_REACHED) == 0)) {    
+          // Updates absolute step position          
+          if (mMode == MOTOR_RUNNING_RIGHT) stepCntr.absSteps += stepCntr.nSteps;
+            else if (mMode == MOTOR_RUNNING_LEFT) stepCntr.absSteps -= stepCntr.nSteps;
+          // Checks and corrects lost steps  
+          checkSteps(&stepperMotor, &stepCntr);
+          Serial.println(ACK_REACHED);
+          }
+        }   
+    }
+   else if (WK_MODE == MD_ROTATE){
+      // Lost steps detection and correction
+      mMode = stepperMotor.getMotorMode();
+      if (mMode != MOTOR_ABORTED) {
+        // Motor not checked and Driver position reached
+        if ((mMode != MOTOR_CHECKED) && (stepperMotor.getMotorState(POSITION_REACHED) == 0)) {    
+          // Updates absolute step position          
+          if (mMode == MOTOR_RUNNING_RIGHT) stepCntr.absSteps += stepCntr.nSteps;
+            else if (mMode == MOTOR_RUNNING_LEFT) stepCntr.absSteps -= stepCntr.nSteps;
+          // Checks and corrects lost steps  
+          //checkSteps(&stepperMotor, &stepCntr);
+          stepperMotor.setMotorMode(MOTOR_CHECKED);
+          Serial.println(ACK_REACHED);
+          }
+        } 
+    
     }
 }
-
 
 
 /********************************************************************************************
@@ -221,7 +247,21 @@ void commandInterpreter(Umotor *motor, step_rcd *pose)
                   Serial.println("h of h# : Printing Help");
                   Serial.println("R#[arg] : Moving [arg] steps Right - Example: R#10000");
                   Serial.println("L#[arg] : Moving [arg] steps Left");
+                  Serial.println("M#[arg] : Switch mode 0=LINEAR 1=ROTATE - Example: M#0");
+                  Serial.println("VF#[arg] : Set max velocity (max=3000) - Example: VF#1000");
                   }
+
+                else if (cmdString.equals(CMD_MODE)){
+                  
+                  WK_MODE = int32_t(Serial.parseInt());
+                  Serial.readString(); // Clear serial buffer
+                  }
+                  
+                  else if (cmdString.equals(SET_VF)){
+                    
+                    VELOCITY_FAST = int32_t(Serial.parseInt());
+                    Serial.readString(); // Clear serial buffer
+                    }
 
                   // Command not found
                   else Serial.println(ACK_ERROR);
