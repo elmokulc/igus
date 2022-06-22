@@ -25,3 +25,12 @@ Author: O. PERIA
 - h of h# : Printing Help
 - R#[arg] : Moving [arg] steps Right - Example: R#10000
 - L#[arg] : Moving [arg] steps Left
+
+
+## Sources 
+- Hardware : 
+  - Seller website : [here](https://www.ustepper.com/getting-started-with-ustepper/)
+  - Plugin to add to Arduino IDE: 
+    - "ustepperS"
+  - Additional Boards Managers URLS to add on Arduino IDE: 
+    - [https://raw.githubusercontent.com/uStepper/uStepperHardware/master/package_ustepper_index.json](https://raw.githubusercontent.com/uStepper/uStepperHardware/master/package_ustepper_index.json)
