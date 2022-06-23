@@ -50,6 +50,14 @@ class IGUS:
         self.on_move = False
         self.pattern_flag = False
         
+        self.warning_words = [
+        "ACK_WAIT"    ,
+        "ACK_ERROR"      ,
+        "ACK_INVALID"   ,
+        "ACK_OUTRANGE"  ,
+        "ACK_ABORTED"   ,
+        "ACK_RESET"]
+                
         self.connect()  
         
     def connect(self):
@@ -73,7 +81,7 @@ class IGUS:
             else:
                 break                   
         if msg:
-            print(msg)
+            print(f"received message: {msg}")
             return msg
             
     def send_msg(self, msg):
@@ -105,18 +113,25 @@ class IGUS:
         
         if unit == "mm":
             value = self.get_meters_value(value = value)
-        print(f'{direction} -- {round(value*0.00375)} -- mm ')
-        print(f'{direction} -- {value} -- step ')
+            print(f'{direction} -- {round(value*0.00375)} -- mm ')
+        else:
+            print(f'{direction} -- {value} -- step ')
         value = round(value)
         self.send_msg(f'{direction}#{value}')
-        self.check_cmd()
+        self.check_cmd(reach_msg='POSITION REACHED\r\n')
 
     @thrd
     def check_cmd(self, reach_msg='POSITION REACHED\r\n'):
         self.on_move = True
-        while self.read_msg() != reach_msg:
-            sleep(0.5)
-            pass
+        while True:
+            msg = self.read_msg()
+            if type(msg) != type(None):
+                if reach_msg in msg:
+                    break
+                elif msg in self.warning_words:
+                    print(f"Warning: {msg}")
+                    break
+            print("Waiting for confirmation...", end="\r")
         self.on_move = False
         
     def get_meters_value(self, value):
@@ -159,7 +174,8 @@ class IGUS:
 
 if __name__ == '__main__':
     # values = [10, 20, 30, 35]
-    igus = IGUS(port="/dev/ttyUSB2")
+    igus = IGUS(port="/dev/ttyUSB1")
+    igus.set_mode("rotate")
     # igus.move_home()
     # igus.run_pattern(values, unit="mm", direction="R")
     # igus.display_help()
