@@ -309,7 +309,10 @@ void commandInterpreter(Umotor *motor, step_rcd *pose)
 
       WK_MODE = int32_t(Serial.parseInt());
       Serial.readString(); // Clear serial buffer
-      Serial.println(ACK_DONE);
+      String workMode = GetWorkMode(WK_MODE);
+      Serial.print(ACK_DONE);
+      Serial.print(" Mode=");
+      Serial.println(workMode);
     }
 
     else if (cmdString.equals(SET_VF))
@@ -317,7 +320,9 @@ void commandInterpreter(Umotor *motor, step_rcd *pose)
 
       VELOCITY_FAST = int32_t(Serial.parseInt());
       Serial.readString(); // Clear serial buffer
-      Serial.println(ACK_DONE);
+      Serial.print(ACK_DONE);
+      Serial.print(" VELOCITY_FAST=");
+      Serial.println(VELOCITY_FAST);
     }
 
     // Command not found
@@ -435,4 +440,14 @@ int32_t DistanceToSteps(float dist)
   int32_t nStps = int32_t(0.5 + dist * float(STEP_REVOLUTION) / 1.5); // 1.5 mm per revolution
 
   return (nStps);
+}
+
+String GetWorkMode(int MODE)
+{
+  String str;
+  if (MODE == 0)
+    str = "LINEAR";
+  else
+    str = "ROTATE";
+  return str;
 }
