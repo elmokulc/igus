@@ -49,6 +49,7 @@ class IGUS:
         self.timeout = timeout       
         self.on_move = False
         self.pattern_flag = False
+        self.pass_check = False
         
         self.warning_words = [
         "ACK_WAIT"    ,
@@ -125,6 +126,9 @@ class IGUS:
         self.on_move = True
         while True:
             msg = self.read_msg()
+            if self.pass_check:
+                print("Passing check")
+                break
             if type(msg) != type(None):
                 if reach_msg in msg:
                     break
@@ -133,6 +137,7 @@ class IGUS:
                     break
             print("Waiting for confirmation...", end="\r")
         self.on_move = False
+        self.pass_check = False
         
     def get_meters_value(self, value):
         return value/0.00375
