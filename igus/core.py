@@ -50,6 +50,7 @@ class IGUS:
         self.on_move = False
         self.pattern_flag = False
         self.pass_check = False
+        self.CONST_REV = 0.00375 # mm/step
         
         self.warning_words = [
         "ACK_WAIT"    ,
@@ -60,6 +61,16 @@ class IGUS:
         "ACK_RESET"]
                 
         self.connect()  
+    
+    def update_constant_rev(self, nb_step_per_tr=400, dist_per_tr=1.5):
+        """_summary_
+
+        Args:
+            nb_step_per_tr (int, optional): Number of motor step to make one tour. Defaults to 400.
+            dist_per_tr (float, optional): Displacement for one motor tour expressed in mm. Defaults to 1.5.
+        """
+        self.CONST_REV = dist_per_tr/nb_step_per_tr
+    
         
     def connect(self):
         self.ser = serial.Serial(port=self.port, baudrate=self.baudrate, timeout=self.timeout)
@@ -113,8 +124,8 @@ class IGUS:
         """
         
         if unit == "mm":
-            value = self.get_meters_value(value = value)
-            print(f'{direction} -- {round(value*0.00375)} -- mm ')
+            value = value / self.CONST_REV
+            print(f'{direction} -- {round(value*self.CONST_REV)} -- mm ')
         else:
             print(f'{direction} -- {value} -- step ')
         value = round(value)
@@ -140,7 +151,17 @@ class IGUS:
         self.pass_check = False
         
     def get_meters_value(self, value):
-        return value/0.00375
+        """_summary_
+        Return step value in mm
+        Args:
+            value (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        return value*self.CONST_REV
+    
+    
     
     @thrd  
     def run_pattern(self, values, unit="mm", direction="R"):
