@@ -3,8 +3,8 @@ authors = [
     {name = "Olivier Peria"},
     {name = "Christian Elmo", email = "christianelmo@gmail.com"}]
 dependencies = [
-    pyserial = ">=3.5"
-]
+    pyserial = ">=3.5"]
+    
 description = "Python module to control step motors"
 name = "igus"
 requires-python = ">= 3.9"
