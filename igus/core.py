@@ -4,6 +4,12 @@ from functools import wraps
 from time import sleep
 import glob 
 import sys
+import logging
+
+
+LOG_DEFAULT_FORMATTER = logging.Formatter(
+    "[%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(funcName)s()]: [%(message)s]"
+)
 
 def serial_ports():
     """ Lists serial port names
@@ -62,6 +68,15 @@ class IGUS:
                 
         self.connect()  
     
+    def setup_logger(self):
+        # Configuration du logger
+        self.logger = logging.getLogger(f"{IGUS.__name__}")
+        handler = logging.StreamHandler()  # Sortie des logs sur la console
+        handler.setFormatter(LOG_DEFAULT_FORMATTER)
+        self.logger.addHandler(handler)
+        self.logger.setLevel(logging.INFO)  # Niveau par défaut
+        self.logger.propagate = False  # Évite la duplication des logs
+    
     def update_constant_rev(self, nb_step_per_tr=400, dist_per_tr=1.5):
         """_summary_
 
@@ -93,7 +108,7 @@ class IGUS:
             else:
                 break                   
         if msg:
-            print(f"received message: {msg}")
+            self.logger.info(f"received message: {msg}")
             return msg
             
     def send_msg(self, msg):
@@ -125,9 +140,9 @@ class IGUS:
         
         if unit == "mm":
             value = value / self.CONST_REV
-            print(f'{direction} -- {round(value*self.CONST_REV)} -- mm ')
+            self.logger.info(f'{direction} -- {round(value*self.CONST_REV)} -- mm ')
         else:
-            print(f'{direction} -- {value} -- step ')
+            self.logger.info(f'{direction} -- {value} -- step ')
         value = round(value)
         self.send_msg(f'{direction}#{value}')
         self.check_cmd(reach_msg='POSITION REACHED')
@@ -138,15 +153,15 @@ class IGUS:
         while True:
             msg = self.read_msg()
             if self.pass_check:
-                print("Passing check")
+                self.logger.info("Passing check")
                 break
             if type(msg) != type(None):
                 if reach_msg in msg:
                     break
                 elif msg in self.warning_words:
-                    print(f"Warning: {msg}")
+                    self.logger.info(f"Warning: {msg}")
                     break
-            print("Waiting for confirmation...", end="\r")
+            self.logger.info("Waiting for confirmation...")
         self.on_move = False
         self.pass_check = False
         
