@@ -65,7 +65,8 @@ class IGUS:
         "ACK_OUTRANGE"  ,
         "ACK_ABORTED"   ,
         "ACK_RESET"]
-                
+
+        self.setup_logger()        
         self.connect()  
     
     def setup_logger(self):
